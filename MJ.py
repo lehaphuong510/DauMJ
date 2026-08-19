@@ -25,11 +25,9 @@ def extract_location(address, loc_list):
     if pd.isna(address) or str(address).strip() == "": return ""
     addr_lower = str(address).lower()
     
-    # Sắp xếp list theo độ dài giảm dần để match tên dài trước (Vd: TP HCM match trước HCM)
     sorted_locs = sorted(loc_list, key=len, reverse=True)
     
     for loc in sorted_locs:
-        # Lọc bỏ tiền tố để so khớp
         clean_loc = loc.lower().replace("tỉnh ", "").replace("thành phố ", "").replace("phường ", "").replace("xã ", "").replace("đặc khu ", "")
         if clean_loc in addr_lower:
             return loc
@@ -50,7 +48,6 @@ def load_data():
     df_app = conn.read(spreadsheet=SHEET_URL, worksheet="Data App")
     df_resp = conn.read(spreadsheet=SHEET_URL, worksheet="Response")
     
-    # Lấy tự động City và Ward từ Google Sheet
     try:
         df_city = conn.read(spreadsheet=SHEET_URL, worksheet="City")
         list_city = df_city['Thành phố'].dropna().astype(str).str.strip().tolist()
@@ -191,6 +188,9 @@ with tab1:
 
         if not is_locked:
             is_correct = st.checkbox("Thông tin giao hàng bên dưới đã chính xác.", value=True)
+            # Thêm dòng chú thích nhỏ ở đây
+            st.markdown("<div style='font-size: 13px; font-style: italic; color: #555; margin-top: -10px; margin-bottom: 15px;'>*Trong trường hợp bạn muốn cập nhật, bạn bỏ dấu tick phía đầu nha, và nếu địa chỉ của bạn chưa phải là địa chỉ sau sáp nhập, bạn cũng cập nhật lại giúp mình nha.</div>", unsafe_allow_html=True)
+            
             if not is_correct:
                 st.markdown("<div style='color: #E74C3C; font-size: 14px; font-weight: bold;'>⚠️ CHỈ ĐIỀN VÀO Ô NÀO CẦN CẬP NHẬT. Giữ nguyên thì BỎ TRỐNG nhé!</div>", unsafe_allow_html=True)
                 new_phone = st.text_input("SĐT Cập Nhật:", placeholder=f"Hiện tại: {original_phone}")
@@ -215,7 +215,6 @@ with tab1:
         # 4. NÚT XÁC NHẬN (GHI ĐÈ LÊN TAB RESPONSE)
         if not is_locked:
             if st.button("🚀 XÁC NHẬN / CẬP NHẬT", type="primary"):
-                # Bắt lỗi chuẩn y chang code cũ
                 if not is_correct and new_phone.strip() == "" and new_address.strip() == "":
                     st.warning("⚠️ Bạn quên chưa tick xác nhận thông tin giao hàng hoặc chưa điền thông tin cập nhật rồi. Bạn vui lòng tick hoặc điền thông tin mới nếu cần cập nhật nha.")
                 else:
@@ -223,6 +222,14 @@ with tab1:
                         conn = st.connection("gsheets", type=GSheetsConnection)
                         df_target = conn.read(spreadsheet=SHEET_URL, worksheet="Response")
                         df_target.columns = df_target.columns.str.strip()
+                        
+                        # Fix lỗi TypeError: Ép kiểu cột về object (chuỗi) để tránh Pandas hiểu nhầm thành float
+                        cols_to_update = ['Checked SDT', 'Checked Địa chỉ', 'Trạng thái xác nhận', 'Lưu ý']
+                        for col in cols_to_update:
+                            if col not in df_target.columns:
+                                df_target[col] = ""
+                            df_target[col] = df_target[col].astype(object)
+                        
                         df_target['SDT_Compare'] = df_target['SDT'].apply(clean_phone).str.lstrip('0')
                         
                         idx_list = df_target[df_target['SDT_Compare'] == clean_input].index
