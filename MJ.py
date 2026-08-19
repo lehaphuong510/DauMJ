@@ -1,0 +1,382 @@
+import streamlit as st
+import pandas as pd
+import os
+import base64
+import io
+import re
+from streamlit_gsheets import GSheetsConnection
+
+# ================= 1. CẤU HÌNH TRANG =================
+st.set_page_config(page_title="XÁC NHẬN THÔNG TIN GIAO HÀNG", page_icon="📦", layout="centered")
+
+ADMIN_PASSWORD = "1708"
+SHEET_URL = "https://docs.google.com/spreadsheets/d/1IB7wWROgUWjpRVRe_k1b16S3SqKoXvOvZYOemx73phE/edit?usp=sharing"
+LOCK_FILE = "lock_form.txt"
+
+def is_form_locked(): return os.path.exists(LOCK_FILE)
+def set_form_lock(locked):
+    if locked:
+        with open(LOCK_FILE, "w") as f: f.write("locked")
+    else:
+        if os.path.exists(LOCK_FILE): os.remove(LOCK_FILE)
+
+# Hàm quét tỉnh/phường thông minh
+def extract_location(address, loc_list):
+    if pd.isna(address) or str(address).strip() == "": return ""
+    addr_lower = str(address).lower()
+    
+    # Sắp xếp list theo độ dài giảm dần để match tên dài trước (Vd: TP HCM match trước HCM)
+    sorted_locs = sorted(loc_list, key=len, reverse=True)
+    
+    for loc in sorted_locs:
+        # Lọc bỏ tiền tố để so khớp
+        clean_loc = loc.lower().replace("tỉnh ", "").replace("thành phố ", "").replace("phường ", "").replace("xã ", "").replace("đặc khu ", "")
+        if clean_loc in addr_lower:
+            return loc
+    return ""
+
+def clean_phone(x):
+    s = str(x).replace('.0', '').replace("'", "").strip()
+    if s.lower() in ['nan', 'none', '']: return ""
+    s_clean = s.replace(" ", "").replace(".", "")
+    if s_clean.isdigit() and not s.startswith('0'): 
+        return '0' + s_clean
+    return s_clean
+
+# ================= 2. HÀM TẢI DỮ LIỆU & CACHE =================
+@st.cache_data(ttl=60)
+def load_data():
+    conn = st.connection("gsheets", type=GSheetsConnection)
+    df_app = conn.read(spreadsheet=SHEET_URL, worksheet="Data App")
+    df_resp = conn.read(spreadsheet=SHEET_URL, worksheet="Response")
+    
+    # Lấy tự động City và Ward từ Google Sheet
+    try:
+        df_city = conn.read(spreadsheet=SHEET_URL, worksheet="City")
+        list_city = df_city['Thành phố'].dropna().astype(str).str.strip().tolist()
+    except:
+        list_city = []
+        
+    try:
+        df_ward = conn.read(spreadsheet=SHEET_URL, worksheet="Ward")
+        list_ward = df_ward['Phường xã'].dropna().astype(str).str.strip().tolist()
+    except:
+        list_ward = []
+    
+    df_app.columns = df_app.columns.str.strip()
+    df_resp.columns = df_resp.columns.str.strip()
+    
+    if 'SDT' in df_app.columns:
+        df_app['SDT'] = df_app['SDT'].apply(clean_phone)
+    if 'SDT' in df_resp.columns:
+        df_resp['SDT'] = df_resp['SDT'].apply(clean_phone)
+        
+    return df_app, df_resp, list_city, list_ward
+
+try:
+    df_app, df_resp, LIST_CITY, LIST_WARD = load_data()
+except Exception as e:
+    st.error("Đang có lỗi kết nối Google Sheet. Vui lòng thử lại sau!")
+    st.stop()
+
+# ================= 3. GIAO DIỆN & CSS =================
+def get_image_base64(path):
+    if os.path.exists(path):
+        with open(path, "rb") as img_file:
+            return base64.b64encode(img_file.read()).decode()
+    return ""
+
+img_title = get_image_base64("Web confirm.jpg")
+
+st.markdown("""
+    <style>
+    .stApp { background-color: #FFFFFF; color: #333333; }
+    h1, h2, h3, h4 { color: #0B192C !important; font-weight: bold; }
+    button[kind="primary"] { background-color: #F4C430 !important; color: #0B192C !important; font-weight: bold !important; border: none; width: 100%; border-radius: 8px;}
+    button[kind="primary"]:hover { background-color: #0B192C !important; color: #FFFFFF !important; }
+    .stTextInput>div>div>input, .stTextArea>div>div>textarea { background-color: #F8F9FA; border: 1px solid #0B192C; border-radius: 5px; }
+    .section-title { background: linear-gradient(90deg, #0B192C 0%, #F4C430 100%); color: white; padding: 12px 15px; border-radius: 8px 8px 0 0; font-size: 16px; font-weight: bold; margin-top: 25px; text-transform: uppercase; }
+    .info-box { background-color: #FAFAFA; border: 1px solid #E0E6ED; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    </style>
+""", unsafe_allow_html=True)
+
+if img_title:
+    st.markdown(f"<div style='text-align: center; margin-bottom: 20px;'><img src='data:image/jpeg;base64,{img_title}' style='width: 100%; max-width: 800px; border-radius: 10px;'></div>", unsafe_allow_html=True)
+else:
+    st.markdown("<h1 style='text-align: center;'>📦 XÁC NHẬN THÔNG TIN GIAO HÀNG</h1>", unsafe_allow_html=True)
+
+col_rf1, col_rf2 = st.columns([1, 3])
+with col_rf1:
+    if st.button("🔄 Cập nhật dữ liệu"):
+        st.cache_data.clear()
+        st.rerun()
+
+tab1, tab2 = st.tabs(["🔍 KIỂM TRA THÔNG TIN", "🔒 ADMIN"])
+
+# ================= TAB 1: KHÁCH HÀNG CHECK THÔNG TIN =================
+with tab1:
+    phone_input = st.text_input("Nhập số điện thoại của bạn:", placeholder="Ví dụ: 0901234567")
+    
+    if st.button("KIỂM TRA 🚀", type="primary"):
+        if phone_input:
+            clean_input = clean_phone(phone_input).lstrip('0')
+            df_app['Phone_Compare'] = df_app['SDT'].astype(str).str.lstrip('0')
+            user_orders = df_app[df_app['Phone_Compare'] == clean_input]
+            
+            if not user_orders.empty:
+                st.session_state['verified_phone'] = clean_input 
+                st.rerun()
+            else:
+                st.warning("Không tìm thấy đơn hàng nào với SĐT này. Bạn kiểm tra lại nhé!")
+        else:
+            st.warning("Bạn chưa nhập số điện thoại kìa!")
+
+    if 'verified_phone' in st.session_state:
+        clean_input = st.session_state['verified_phone']
+        df_app['Phone_Compare'] = df_app['SDT'].astype(str).str.lstrip('0')
+        user_orders = df_app[df_app['Phone_Compare'] == clean_input]
+        row_data = user_orders.iloc[0]
+        
+        ten_kh = str(row_data.get('Tên', 'BẠN')).strip()
+        original_phone = str(row_data.get('SDT', '')).strip()
+        original_address = str(row_data.get('Địa chỉ', '')).strip()
+        ghi_chu_goc = str(row_data.get('Ghi chú', '')).strip()
+        mvd = str(row_data.get('Mã vận đơn', '')).replace('nan', '').strip()
+        
+        chk_sdt = str(row_data.get('Checked SDT', '')).strip().replace("nan", "")
+        chk_dc = str(row_data.get('Checked Địa chỉ', '')).strip().replace("nan", "")
+        tt_xacnhan = str(row_data.get('Trạng thái xác nhận', '')).strip()
+        luu_y_cu = str(row_data.get('Lưu ý', '')).strip().replace("nan", "")
+
+        is_locked = is_form_locked()
+        has_update = (chk_sdt != "") or (chk_dc != "")
+
+        if tt_xacnhan == "Đã xác nhận":
+            if chk_sdt: original_phone = chk_sdt
+            if chk_dc: original_address = chk_dc
+            
+            if has_update:
+                st.success(f"🎉 Chào {ten_kh.upper()} ơi, bạn đã cập nhật thông tin thành công rồi nha, dưới đây là kết quả cuối cùng của bạn!")
+            else:
+                st.success(f"🎉 Chào {ten_kh.upper()} ơi, bạn đã xác nhận thông tin thành công rồi nha, dưới đây là kết quả cuối cùng của bạn!")
+        else:
+            st.info(f"👋 Chào {ten_kh.upper()} ơi, bạn kiểm tra lại thông tin đơn hàng của mình nha!")
+
+        # 1. THÔNG TIN VẬN CHUYỂN
+        st.markdown("<div class='section-title'>🚚 THÔNG TIN VẬN CHUYỂN</div>", unsafe_allow_html=True)
+        html_ship = "<div class='info-box'>"
+        html_ship += "<div style='margin-bottom: 8px;'><b>Đơn vị vận chuyển:</b> <span style='color: #0B192C;'>SPX Express</span></div>"
+        
+        if mvd:
+            html_ship += f"<div style='margin-bottom: 8px;'><b>Mã vận đơn:</b> <span style='color: #E74C3C; font-weight: bold; font-size: 16px;'>{mvd}</span></div>"
+            html_ship += "<div style='margin-bottom: 8px;'><b>Link tra cứu:</b> <a href='https://spx.vn/vi' target='_blank' style='color: #0066CC;'>Bấm vào đây để tra cứu hành trình nha 🚀</a></div>"
+        else:
+            html_ship += "<div style='margin-bottom: 8px; color: #555; font-style: italic;'>Tụi mình sẽ cập nhật Mã vận đơn ngay sau khi book đơn nha ❤️</div>"
+            
+        if ghi_chu_goc and ghi_chu_goc.lower() != 'nan':
+            html_ship += f"<hr style='border: 0.5px dashed #ccc; margin: 10px 0;'><div style='margin-bottom: 8px;'><b>Ghi chú đơn hàng:</b> {ghi_chu_goc}</div>"
+            
+        html_ship += "</div>"
+        st.markdown(html_ship, unsafe_allow_html=True)
+
+        # 2. THÔNG TIN GIAO HÀNG
+        if is_locked:
+            st.error("🔒 ĐÃ HẾT THỜI GIAN CẬP NHẬT. Thông tin bên dưới đã được chốt sổ.")
+
+        st.markdown("<div class='section-title'>📍 THÔNG TIN GIAO HÀNG</div>", unsafe_allow_html=True)
+        st.info("📍 Phương thức nhận hàng: **Ship về nhà**")
+
+        final_phone = original_phone
+        final_address = original_address
+
+        if not is_locked:
+            is_correct = st.checkbox("Thông tin giao hàng bên dưới đã chính xác.", value=True)
+            if not is_correct:
+                st.markdown("<div style='color: #E74C3C; font-size: 14px; font-weight: bold;'>⚠️ CHỈ ĐIỀN VÀO Ô NÀO CẦN CẬP NHẬT. Giữ nguyên thì BỎ TRỐNG nhé!</div>", unsafe_allow_html=True)
+                new_phone = st.text_input("SĐT Cập Nhật:", placeholder=f"Hiện tại: {original_phone}")
+                new_address = st.text_area("Địa chỉ Cập Nhật:", placeholder=f"Hiện tại: {original_address}")
+                
+                final_phone = new_phone if new_phone.strip() else original_phone
+                final_address = new_address if new_address.strip() else original_address
+        else:
+            is_correct = True
+            new_phone = ""
+            new_address = ""
+
+        st.markdown(f"<div class='info-box'><b>SĐT:</b> {final_phone}<br><b>Địa chỉ:</b> {final_address}</div>", unsafe_allow_html=True)
+
+        # 3. LƯU Ý THÊM
+        st.markdown("<div class='section-title'>📝 LƯU Ý THÊM</div>", unsafe_allow_html=True)
+        if not is_locked:
+            final_note = st.text_area("Bạn có muốn nhắn nhủ gì cho tụi mình không?", value=luu_y_cu)
+        else:
+            st.write(luu_y_cu)
+
+        # 4. NÚT XÁC NHẬN (GHI ĐÈ LÊN TAB RESPONSE)
+        if not is_locked:
+            if st.button("🚀 XÁC NHẬN / CẬP NHẬT", type="primary"):
+                # Bắt lỗi chuẩn y chang code cũ
+                if not is_correct and new_phone.strip() == "" and new_address.strip() == "":
+                    st.warning("⚠️ Bạn quên chưa tick xác nhận thông tin giao hàng hoặc chưa điền thông tin cập nhật rồi. Bạn vui lòng tick hoặc điền thông tin mới nếu cần cập nhật nha.")
+                else:
+                    with st.spinner("Đang lưu thông tin vào hệ thống..."):
+                        conn = st.connection("gsheets", type=GSheetsConnection)
+                        df_target = conn.read(spreadsheet=SHEET_URL, worksheet="Response")
+                        df_target.columns = df_target.columns.str.strip()
+                        df_target['SDT_Compare'] = df_target['SDT'].apply(clean_phone).str.lstrip('0')
+                        
+                        idx_list = df_target[df_target['SDT_Compare'] == clean_input].index
+                        
+                        if len(idx_list) > 0:
+                            for idx in idx_list:
+                                df_target.at[idx, 'Checked SDT'] = final_phone.strip()
+                                df_target.at[idx, 'Checked Địa chỉ'] = final_address.strip()
+                                df_target.at[idx, 'Trạng thái xác nhận'] = "Đã xác nhận"
+                                df_target.at[idx, 'Lưu ý'] = final_note.strip()
+                                
+                            df_target = df_target.drop(columns=['SDT_Compare'])
+                            conn.update(spreadsheet=SHEET_URL, worksheet="Response", data=df_target)
+                            st.cache_data.clear() 
+                            st.success("✅ ĐÃ GHI NHẬN THÔNG TIN LÊN HỆ THỐNG! Cảm ơn bạn rất nhiều 💖")
+                            st.balloons()
+                        else:
+                            st.error("Không tìm thấy dòng tương ứng trong tab Response để ghi đè. Báo Admin nhé!")
+
+# ================= TAB 2: ADMIN =================
+with tab2:
+    pass_admin = st.text_input("Nhập mật khẩu Admin:", type="password")
+    
+    if pass_admin == ADMIN_PASSWORD:
+        st.success("Đăng nhập thành công!")
+        
+        is_locked = is_form_locked()
+        toggle_lock = st.toggle("🔒 KHÓA CẬP NHẬT (Fan không thể sửa form nữa)", value=is_locked)
+        if toggle_lock != is_locked:
+            set_form_lock(toggle_lock)
+            st.rerun()
+        st.divider()
+
+        # --- TIẾN ĐỘ XÁC NHẬN ---
+        st.markdown("#### 📦 TIẾN ĐỘ XÁC NHẬN")
+        total_orders = len(df_app)
+        
+        df_confirmed = df_app[df_app['Trạng thái xác nhận'].astype(str).str.strip() == 'Đã xác nhận']
+        confirmed_total = len(df_confirmed)
+        
+        def has_update(row):
+            orig_sdt = str(row.get('SDT', '')).strip()
+            orig_dc = str(row.get('Địa chỉ', '')).strip()
+            chk_sdt = str(row.get('Checked SDT', '')).replace('nan','').strip()
+            chk_dc = str(row.get('Checked Địa chỉ', '')).replace('nan','').strip()
+            if chk_sdt != '' and clean_phone(chk_sdt) != clean_phone(orig_sdt): return True
+            if chk_dc != '' and chk_dc != orig_dc: return True
+            return False
+
+        updated_count = df_confirmed.apply(has_update, axis=1).sum() if confirmed_total > 0 else 0
+        just_confirmed_count = confirmed_total - updated_count
+        not_confirmed = total_orders - confirmed_total
+        
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("📦 Tổng đơn", total_orders)
+        c2.metric("👌 Chỉ Xác Nhận", just_confirmed_count)
+        c3.metric("✍️ Có Cập Nhật", updated_count)
+        c4.metric("⏳ Đang chờ", not_confirmed)
+        st.divider()
+
+        # --- TẠO DATA CHUẨN ĐỂ XUẤT FILE ---
+        df_export_base = df_app.copy()
+        df_export_base['Final_Phone'] = df_export_base['Checked SDT'].replace(['', 'nan', 'None'], pd.NA).fillna(df_export_base['SDT'])
+        df_export_base['Final_Address'] = df_export_base['Checked Địa chỉ'].replace(['', 'nan', 'None'], pd.NA).fillna(df_export_base['Địa chỉ'])
+        
+        # --- DOWNLOAD FILE EXCEL (FORM SPX) ---
+        st.markdown("### 📥 TẢI FILE EXCEL - FORM SPX")
+        if st.button("Tạo File Excel SPX"):
+            df_spx = pd.DataFrame()
+            df_spx['*Tên người nhận'] = df_export_base['Tên']
+            df_spx['*Số điện thoại'] = df_export_base['Final_Phone'].apply(lambda x: f"'{x}") 
+            df_spx['*Tỉnh/Thành Phố'] = df_export_base['Final_Address'].apply(lambda x: extract_location(x, LIST_CITY))
+            df_spx['*Xã/Phường'] = df_export_base['Final_Address'].apply(lambda x: extract_location(x, LIST_WARD))
+            df_spx['*Địa chỉ chi tiết'] = df_export_base['Final_Address']
+            df_spx['Lưu ý về địa chỉ'] = ""
+            df_spx['Mã bưu chính'] = ""
+            df_spx['*Tên sản phẩm'] = "Quà từ Đậu"
+            df_spx['Số lượng'] = 1
+            df_spx['Giá tiền'] = 0
+            df_spx['*Tổng cân nặng bưu gửi (KG)'] = 0.5
+            df_spx['Chiều dài (CM)'] = 30
+            df_spx['Chiều rộng (CM)'] = 10
+            df_spx['Chiều cao (CM)'] = 1
+            df_spx['Mã khách hàng'] = ""
+            df_spx['*Giá trị đơn hàng'] = 0
+            df_spx['*Giao hàng một phần (Y/N)'] = "N"
+            df_spx['*Cho phép thử hàng (Y/N)'] = "N"
+            df_spx['*Cho xem hàng, không cho thử (Y/N)'] = "N"
+            df_spx['Thu phí từ chối nhận hàng (Y/N)'] = "N"
+            df_spx['Phí từ chối nhận hàng cần thu'] = ""
+            df_spx['*Thu COD (Y/N)'] = "N"
+            df_spx['Số tiền COD'] = ""
+            df_spx['bưu gửi giá trị cao (Y/N)'] = "N"
+            df_spx['*Hình thức thanh Toán'] = "Người nhận trả"
+
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                df_spx.to_excel(writer, index=False, sheet_name='Form SPX')
+            excel_data = output.getvalue()
+            
+            st.download_button(
+                label="📥 TẢI FILE EXCEL SPX (.xlsx)",
+                data=excel_data,
+                file_name="Form_Tao_Don_SPX.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+            
+        st.divider()
+
+        # --- DOWNLOAD LABLE IN ĐƠN ---
+        st.markdown("### 🖨️ TẢI FILE LABEL DÁN THÙNG")
+        if st.button("Tạo File In Label HTML"):
+            html_content = """
+            <html><head><meta charset="utf-8">
+            <style>
+                @page { size: 100mm 150mm; margin: 0; }
+                body { font-family: Arial, sans-serif; margin: 0; padding: 3mm; background-color: #f4f4f9; }
+                .grid-container { display: flex; flex-direction: column; gap: 3mm; }
+                .label-box { width: 94mm; height: auto; min-height: 40mm; background: #fff; border: 2px dashed #000; padding: 10px; border-radius: 5px; box-sizing: border-box; page-break-inside: avoid; }
+                .title { font-size: 16px; font-weight: bold; color: #000; border-bottom: 2px solid #000; padding-bottom: 4px; margin-bottom: 6px; }
+                .info { font-size: 14px; margin-bottom: 4px; line-height: 1.4; color: #000; }
+                .note { font-size: 13px; font-style: italic; color: #555; margin-top: 6px; border-top: 1px dotted #ccc; padding-top: 4px; }
+            </style></head><body><div class="grid-container">
+            """
+            
+            for index, row in df_export_base.iterrows():
+                ten = str(row.get('Tên', '')).replace('nan', '').strip()
+                sdt = str(row.get('Final_Phone', '')).replace('nan', '').strip()
+                diachi = str(row.get('Final_Address', '')).replace('nan', '').strip()
+                mvd = str(row.get('Mã vận đơn', '')).replace('nan', '').strip()
+                ghichu = str(row.get('Ghi chú', '')).replace('nan', '').strip()
+                
+                mvd_text = f"📦 MÃ VĐ: {mvd}" if mvd else "📦 MÃ VĐ: ......................"
+                
+                html_content += f"""
+                <div class="label-box">
+                    <div class="title">{mvd_text}</div>
+                    <div class="info">👤 <b>{ten}</b> <br>📞 {sdt}</div>
+                    <div class="info">🏠 {diachi}</div>
+                """
+                if ghichu:
+                    html_content += f"<div class='note'>📝 Ghi chú: {ghichu}</div>"
+                    
+                html_content += "</div>"
+                
+            html_content += "</div></body></html>"
+            
+            st.success("Đã tạo Label thành công!")
+            st.download_button(
+                label="📥 TẢI FILE IN LABLE (.html)", 
+                data=html_content, 
+                file_name="Label_SPX_Nhanh.html", 
+                mime="text/html"
+            )
+
+    elif pass_admin != "":
+        st.error("Sai mật khẩu!")
