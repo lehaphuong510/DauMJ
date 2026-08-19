@@ -12,7 +12,6 @@ st.set_page_config(page_title="FREEBIE MJ FROM ĐẬU", page_icon="📦", layout
 ADMIN_PASSWORD = "1708"
 SHEET_ID = "1IB7wWROgUWjpRVRe_k1b16S3SqKoXvOvZYOemx73phE"
 SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/edit?usp=sharing"
-
 LOCK_FILE = "lock_form.txt"
 
 def is_form_locked(): return os.path.exists(LOCK_FILE)
@@ -31,9 +30,9 @@ def clean_phone(x):
         return '0' + s_clean
     return s_clean
 
-# Phục hồi hàm "Tẩy trần dữ liệu" chuẩn xác của code cũ
+# Hàm Tẩy trần dữ liệu thần thánh - Bảo vệ toàn vẹn số 0 và chống lỗi Type
 def clean_df_for_gsheets(df):
-    cols_to_ensure = ['Checked SDT', 'Checked Địa chỉ', 'Trạng thái xác nhận', 'Lưu ý']
+    cols_to_ensure = ['Checked SDT', 'Checked Địa chỉ', 'Checked Thành phố', 'Checked Phường xã', 'Địa chỉ đặc biệt', 'Trạng thái xác nhận', 'Lưu ý']
     for c in cols_to_ensure:
         if c not in df.columns: df[c] = ""
         df[c] = df[c].astype(object)
@@ -72,17 +71,17 @@ def load_data():
     df_app = conn.read(spreadsheet=SHEET_URL, worksheet="Data App")
     df_resp = conn.read(spreadsheet=SHEET_URL, worksheet="Response")
     
-    try:
-        df_city = conn.read(spreadsheet=SHEET_URL, worksheet="City")
-        list_city = df_city['Thành phố'].dropna().astype(str).str.strip().tolist()
-    except:
-        list_city = []
-        
+    # Gom nhóm Tỉnh/Phường từ tab Ward
     try:
         df_ward = conn.read(spreadsheet=SHEET_URL, worksheet="Ward")
-        list_ward = df_ward['Phường xã'].dropna().astype(str).str.strip().tolist()
+        df_ward.columns = df_ward.columns.str.strip()
+        df_ward_clean = df_ward[['Thành phố', 'Phường xã']].dropna()
+        # Tạo Dictionary {City: [Ward1, Ward2,...]}
+        dict_city_ward = df_ward_clean.groupby('Thành phố')['Phường xã'].apply(lambda x: sorted([str(i).strip() for i in x if str(i).strip() != ''])).to_dict()
+        list_city = sorted(list(dict_city_ward.keys()))
     except:
-        list_ward = []
+        list_city = []
+        dict_city_ward = {}
     
     df_app.columns = df_app.columns.str.strip()
     df_resp.columns = df_resp.columns.str.strip()
@@ -90,10 +89,10 @@ def load_data():
     if 'SDT' in df_app.columns:
         df_app['SDT'] = df_app['SDT'].apply(clean_phone)
         
-    return df_app, df_resp, list_city, list_ward
+    return df_app, df_resp, list_city, dict_city_ward
 
 try:
-    df_app, df_resp, LIST_CITY, LIST_WARD = load_data()
+    df_app, df_resp, LIST_CITY, DICT_CITY_WARD = load_data()
 except Exception as e:
     st.error("Đang có lỗi kết nối Google Sheet. Vui lòng thử lại sau!")
     st.stop()
@@ -113,7 +112,7 @@ st.markdown("""
     h1, h2, h3, h4 { color: #0B192C !important; font-weight: bold; }
     button[kind="primary"] { background-color: #F4C430 !important; color: #0B192C !important; font-weight: bold !important; border: none; width: 100%; border-radius: 8px;}
     button[kind="primary"]:hover { background-color: #0B192C !important; color: #FFFFFF !important; }
-    .stTextInput>div>div>input, .stTextArea>div>div>textarea { background-color: #F8F9FA; border: 1px solid #0B192C; border-radius: 5px; }
+    .stTextInput>div>div>input, .stTextArea>div>div>textarea, .stSelectbox>div>div>div { background-color: #F8F9FA; border: 1px solid #0B192C; border-radius: 5px; }
     .section-title { background: linear-gradient(90deg, #0B192C 0%, #F4C430 100%); color: white; padding: 12px 15px; border-radius: 8px 8px 0 0; font-size: 16px; font-weight: bold; margin-top: 25px; text-transform: uppercase; }
     .info-box { background-color: #FAFAFA; border: 1px solid #E0E6ED; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
     </style>
@@ -164,17 +163,19 @@ with tab1:
         
         chk_sdt = clean_phone(row_data.get('Checked SDT', ''))
         chk_dc = str(row_data.get('Checked Địa chỉ', '')).strip().replace("nan", "")
+        chk_city = str(row_data.get('Checked Thành phố', '')).strip().replace("nan", "")
+        chk_ward = str(row_data.get('Checked Phường xã', '')).strip().replace("nan", "")
+        chk_special = str(row_data.get('Địa chỉ đặc biệt', '')).strip().replace("nan", "")
         tt_xacnhan = str(row_data.get('Trạng thái xác nhận', '')).strip()
         luu_y_cu = str(row_data.get('Lưu ý', '')).strip().replace("nan", "")
 
         is_locked = is_form_locked()
         
-        # LOGIC XÁC NHẬN CHUẨN XÁC TỪ CODE CŨ
+        # LOGIC XÁC NHẬN CHUẨN XÁC TỪ CODE CŨ (Phân biệt Xác nhận vs Cập nhật)
         has_update = False
-        if (chk_sdt != "") and (chk_sdt != original_phone): 
-            has_update = True
-        if (chk_dc != "") and (chk_dc != original_address): 
-            has_update = True
+        if (chk_sdt != "") and (chk_sdt != original_phone): has_update = True
+        if (chk_dc != "") and (chk_dc != original_address): has_update = True
+        if (chk_city != ""): has_update = True
 
         if tt_xacnhan == "Đã xác nhận":
             if chk_sdt: original_phone = chk_sdt
@@ -204,34 +205,87 @@ with tab1:
         html_ship += "</div>"
         st.markdown(html_ship, unsafe_allow_html=True)
 
-        # 2. THÔNG TIN GIAO HÀNG
+        # 2. THÔNG TIN GIAO HÀNG (Kèm Auto-fill)
         if is_locked:
             st.error("🔒 ĐÃ HẾT THỜI GIAN CẬP NHẬT. Thông tin bên dưới đã được chốt sổ.")
 
         st.markdown("<div class='section-title'>📍 THÔNG TIN GIAO HÀNG</div>", unsafe_allow_html=True)
 
-        final_phone = original_phone
-        final_address = original_address
+        # Tính toán Auto-fill
+        auto_city = chk_city if chk_city else extract_location(original_address, LIST_CITY)
+        
+        list_ward_options = DICT_CITY_WARD.get(auto_city, []) if auto_city else []
+        auto_ward = chk_ward if chk_ward else extract_location(original_address, list_ward_options)
 
         if not is_locked:
-            # Gắn lại KEY cho Checkbox để giữ trạng thái
             is_correct = st.checkbox("Thông tin giao hàng bên dưới đã chính xác.", value=True, key=f"chk_correct_{clean_input}")
-            # Trả lại dòng Text thông báo in nghiêng
-            st.markdown("<div style='font-size: 13px; font-style: italic; color: #555; margin-top: -10px; margin-bottom: 15px;'>*Trong trường hợp bạn muốn cập nhật, bạn bỏ dấu tick phía đầu nha, và nếu địa chỉ của bạn chưa phải là địa chỉ sau sáp nhập, bạn cũng cập nhật lại giúp mình nha.</div>", unsafe_allow_html=True)
+            st.markdown("<div style='font-size: 13px; font-style: italic; color: #555; margin-top: -10px; margin-bottom: 15px;'>*Trong trường hợp bạn muốn cập nhật, bạn bỏ dấu tick phía đầu nha, và bạn đọc kỹ phần lưu ý về địa chỉ phía dưới giúp mình nha.</div>", unsafe_allow_html=True)
             
             if not is_correct:
-                st.markdown("<div style='color: #E74C3C; font-size: 14px; font-weight: bold;'>⚠️ CHỈ ĐIỀN VÀO Ô NÀO CẦN CẬP NHẬT. Giữ nguyên thì BỎ TRỐNG nhé!</div>", unsafe_allow_html=True)
+                # CARD CẢNH BÁO NỔI BẬT
+                st.markdown("""
+                <div style='border: 2px solid #E74C3C; border-radius: 8px; padding: 15px; background-color: #FDEDEC; margin-bottom: 20px;'>
+                    <b style='color: #C0392B; font-size: 15px;'>🚨 LƯU Ý ĐỊNH DẠNG ĐỊA CHỈ HỢP LỆ:</b><br>
+                    <ol style='color: #C0392B; margin-top: 5px; margin-bottom: 5px; padding-left: 20px;'>
+                        <li>Chỉ bao gồm Số nhà, Đường, Phường/ Xã, Tỉnh/ Thành phố.</li>
+                        <li>Mọi lưu ý khác bạn điền ở phần <b>Địa chỉ đặc biệt</b> giúp mình nhé.</li>
+                        <li>Mọi người nhớ check kỹ phần Khu vực hành chính nha.</li>
+                    </ol>
+                    <i style='color: #C0392B;'>Vì để đảm bảo ship hàng không bị thất lạc do sự sáp nhập, mọi người chịu khó giúp mình nha.</i>
+                </div>
+                """, unsafe_allow_html=True)
+
                 new_phone = st.text_input("SĐT Cập Nhật:", placeholder=f"Hiện tại: {original_phone}")
-                new_address = st.text_area("Địa chỉ Cập Nhật:", placeholder=f"Hiện tại: {original_address}")
+                new_address = st.text_area("Địa chỉ Cập Nhật (Số nhà, Đường):", placeholder=f"Hiện tại: {original_address}")
                 
+                st.markdown("<div style='font-weight: bold; color: #0B192C; margin-top: 10px;'>Khu vực hành chính sau sáp nhập của nhà bạn:</div>", unsafe_allow_html=True)
+                
+                # Cục Dropdown Thành phố
+                city_options = ["-- Chọn Thành phố --"] + LIST_CITY
+                default_city_idx = city_options.index(auto_city) if auto_city in city_options else 0
+                selected_city = st.selectbox("Thành phố", options=city_options, index=default_city_idx)
+                
+                # Cục Dropdown Phường xã (Phụ thuộc Thành phố)
+                ward_options = ["-- Chọn Phường/Xã --"]
+                if selected_city != "-- Chọn Thành phố --":
+                    ward_options += DICT_CITY_WARD.get(selected_city, [])
+                default_ward_idx = ward_options.index(auto_ward) if auto_ward in ward_options else 0
+                selected_ward = st.selectbox("Phường/Xã", options=ward_options, index=default_ward_idx)
+                
+                st.markdown("<div style='font-size: 12.5px; font-style: italic; color: #E74C3C; margin-top: -10px; margin-bottom: 15px;'>*Nếu khu vực hành chính sau sáp nhập chưa đúng, bạn nhớ chọn lại nha.</div>", unsafe_allow_html=True)
+                
+                new_special = st.text_input("Địa chỉ đặc biệt:", value=chk_special, placeholder="Ví dụ: Tòa nhà Etown 2, Cổng trường Nguyễn Khuyến...")
+                st.markdown("<div style='font-size: 12.5px; font-style: italic; color: #555; margin-top: -10px; margin-bottom: 15px;'>(Nếu bạn có địa chỉ đặc biệt hoặc lưu ý về địa chỉ, một dữ kiện để shipper dễ nhận ra mà bạn muốn lưu ý thì bạn note vào đây nha)</div>", unsafe_allow_html=True)
+
+                # Gán dữ liệu cuối cùng khi đang mở form sửa
                 final_phone = new_phone if new_phone.strip() else original_phone
                 final_address = new_address if new_address.strip() else original_address
+                final_city = selected_city if selected_city != "-- Chọn Thành phố --" else ""
+                final_ward = selected_ward if selected_ward != "-- Chọn Phường/Xã --" else ""
+                final_special = new_special
+            else:
+                # Nếu tick đã chính xác, hiển thị dữ liệu gốc + auto-fill
+                final_phone = original_phone
+                final_address = original_address
+                final_city = auto_city
+                final_ward = auto_ward
+                final_special = chk_special
         else:
-            is_correct = True
-            new_phone = ""
-            new_address = ""
+            final_phone = original_phone
+            final_address = original_address
+            final_city = chk_city
+            final_ward = chk_ward
+            final_special = chk_special
 
-        st.markdown(f"<div class='info-box'><b>SĐT:</b> {final_phone}<br><b>Địa chỉ:</b> {final_address}</div>", unsafe_allow_html=True)
+        # Hiển thị Info Box chốt cuối
+        html_info = f"<div class='info-box'>"
+        html_info += f"<b>SĐT:</b> {final_phone}<br>"
+        html_info += f"<b>Địa chỉ:</b> {final_address}<br>"
+        html_info += f"<b>Tỉnh/Thành phố:</b> {final_city if final_city else '<span style=\"color:#E74C3C\">Chưa xác định</span>'}<br>"
+        html_info += f"<b>Phường/Xã:</b> {final_ward if final_ward else '<span style=\"color:#E74C3C\">Chưa xác định</span>'}"
+        if final_special: html_info += f"<br><b>Địa chỉ đặc biệt:</b> {final_special}"
+        html_info += "</div>"
+        st.markdown(html_info, unsafe_allow_html=True)
 
         # 3. LƯU Ý THÊM
         st.markdown("<div class='section-title'>📝 LƯU Ý THÊM</div>", unsafe_allow_html=True)
@@ -243,8 +297,10 @@ with tab1:
         # 4. NÚT XÁC NHẬN (GHI ĐÈ LÊN TAB RESPONSE)
         if not is_locked:
             if st.button("🚀 XÁC NHẬN / CẬP NHẬT", type="primary"):
-                if not is_correct and new_phone.strip() == "" and new_address.strip() == "":
-                    st.warning("⚠️ Bạn quên chưa tick xác nhận thông tin giao hàng hoặc chưa điền thông tin cập nhật rồi. Bạn vui lòng tick hoặc điền thông tin mới nếu cần cập nhật nha.")
+                if not is_correct and new_phone.strip() == "" and new_address.strip() == "" and final_city == "" and final_ward == "" and final_special.strip() == "":
+                    st.warning("⚠️ Bạn quên chưa điền thông tin cập nhật rồi. Bạn vui lòng tick xác nhận hoặc điền thông tin mới nha.")
+                elif not is_correct and (final_city == "" or final_ward == ""):
+                    st.warning("⚠️ Bạn vui lòng chọn đầy đủ Thành phố và Phường/Xã nhé!")
                 else:
                     with st.spinner("Đang lưu thông tin vào hệ thống..."):
                         conn = st.connection("gsheets", type=GSheetsConnection)
@@ -258,6 +314,9 @@ with tab1:
                             for idx in idx_list:
                                 df_target.at[idx, 'Checked SDT'] = final_phone.strip()
                                 df_target.at[idx, 'Checked Địa chỉ'] = final_address.strip()
+                                df_target.at[idx, 'Checked Thành phố'] = final_city.strip()
+                                df_target.at[idx, 'Checked Phường xã'] = final_ward.strip()
+                                df_target.at[idx, 'Địa chỉ đặc biệt'] = final_special.strip()
                                 df_target.at[idx, 'Trạng thái xác nhận'] = "Đã xác nhận"
                                 df_target.at[idx, 'Lưu ý'] = final_note.strip()
                                 
@@ -304,16 +363,16 @@ with tab2:
                 
             orig_sdt = safe_str(row.get('SDT', '')).replace('.0', '').replace("'", "")
             if orig_sdt.isdigit() and not orig_sdt.startswith('0'): orig_sdt = '0' + orig_sdt
-            
             orig_dc = safe_str(row.get('Địa chỉ', ''))
             
             chk_sdt = safe_str(row.get('Checked SDT', '')).replace('.0', '').replace("'", "")
             if chk_sdt.isdigit() and not chk_sdt.startswith('0'): chk_sdt = '0' + chk_sdt
-            
             chk_dc = safe_str(row.get('Checked Địa chỉ', ''))
+            chk_city = safe_str(row.get('Checked Thành phố', ''))
 
             if chk_sdt != '' and chk_sdt != orig_sdt: return True
             if chk_dc != '' and chk_dc != orig_dc: return True
+            if chk_city != '': return True # Có xác nhận chọn Tỉnh/Thành
             return False
 
         updated_count = df_confirmed.apply(has_update, axis=1).sum() if confirmed_total > 0 else 0
@@ -328,9 +387,25 @@ with tab2:
         st.divider()
 
         # --- TẠO DATA CHUẨN ĐỂ XUẤT FILE ---
+        # Logic Fallback hoàn hảo: Trống thì lấy gốc, nếu đã chọn thì lấy thông tin khách chọn
+        def get_final_row(row):
+            def s_str(val): return str(val).replace('nan','').replace('None','').strip()
+            
+            f_phone = clean_phone(s_str(row.get('Checked SDT'))) or clean_phone(s_str(row.get('SDT')))
+            f_add = s_str(row.get('Checked Địa chỉ')) or s_str(row.get('Địa chỉ'))
+            
+            # Cứu net Tỉnh/Phường: Nếu khách quên chưa tick xác nhận, tự động đoán cho Admin xuất file
+            f_city = s_str(row.get('Checked Thành phố'))
+            if not f_city: f_city = extract_location(f_add, LIST_CITY)
+            
+            f_ward = s_str(row.get('Checked Phường xã'))
+            if not f_ward and f_city: f_ward = extract_location(f_add, DICT_CITY_WARD.get(f_city, []))
+            
+            f_spec = s_str(row.get('Địa chỉ đặc biệt'))
+            return pd.Series([f_phone, f_add, f_city, f_ward, f_spec])
+
         df_export_base = df_app.copy()
-        df_export_base['Final_Phone'] = df_export_base['Checked SDT'].apply(clean_phone).replace('', pd.NA).fillna(df_export_base['SDT'].apply(clean_phone))
-        df_export_base['Final_Address'] = df_export_base['Checked Địa chỉ'].replace(['', 'nan', 'None'], pd.NA).fillna(df_export_base['Địa chỉ'])
+        df_export_base[['Final_Phone', 'Final_Address', 'Final_City', 'Final_Ward', 'Final_Special']] = df_export_base.apply(get_final_row, axis=1)
         
         # --- DOWNLOAD FILE EXCEL (FORM SPX) ---
         st.markdown("### 📥 TẢI FILE EXCEL - FORM SPX")
@@ -338,10 +413,10 @@ with tab2:
             df_spx = pd.DataFrame()
             df_spx['*Tên người nhận'] = df_export_base['Tên']
             df_spx['*Số điện thoại'] = df_export_base['Final_Phone'].apply(lambda x: f"'{x}") 
-            df_spx['*Tỉnh/Thành Phố'] = df_export_base['Final_Address'].apply(lambda x: extract_location(x, LIST_CITY))
-            df_spx['*Xã/Phường'] = df_export_base['Final_Address'].apply(lambda x: extract_location(x, LIST_WARD))
+            df_spx['*Tỉnh/Thành Phố'] = df_export_base['Final_City']
+            df_spx['*Xã/Phường'] = df_export_base['Final_Ward']
             df_spx['*Địa chỉ chi tiết'] = df_export_base['Final_Address']
-            df_spx['Lưu ý về địa chỉ'] = ""
+            df_spx['Lưu ý về địa chỉ'] = df_export_base['Final_Special']
             df_spx['Mã bưu chính'] = ""
             df_spx['*Tên sản phẩm'] = "Quà từ Đậu"
             df_spx['Số lượng'] = 1
@@ -396,19 +471,23 @@ with tab2:
                 ten = str(row.get('Tên', '')).replace('nan', '').strip()
                 sdt = str(row.get('Final_Phone', '')).replace('nan', '').strip()
                 diachi = str(row.get('Final_Address', '')).replace('nan', '').strip()
+                tp = str(row.get('Final_City', '')).replace('nan', '').strip()
+                px = str(row.get('Final_Ward', '')).replace('nan', '').strip()
+                spec = str(row.get('Final_Special', '')).replace('nan', '').strip()
                 mvd = str(row.get('Mã vận đơn', '')).replace('nan', '').strip()
                 ghichu = str(row.get('Ghi chú', '')).replace('nan', '').strip()
                 
                 mvd_text = f"📦 MÃ VĐ: {mvd}" if mvd else "📦 MÃ VĐ: ......................"
+                full_address = f"{diachi}, {px}, {tp}".strip(", ")
                 
                 html_content += f"""
                 <div class="label-box">
                     <div class="title">{mvd_text}</div>
                     <div class="info">👤 <b>{ten}</b> <br>📞 {sdt}</div>
-                    <div class="info">🏠 {diachi}</div>
+                    <div class="info">🏠 {full_address}</div>
                 """
-                if ghichu:
-                    html_content += f"<div class='note'>📝 Ghi chú: {ghichu}</div>"
+                if spec: html_content += f"<div class='info'>📍 Đặc biệt: <b>{spec}</b></div>"
+                if ghichu: html_content += f"<div class='note'>📝 Ghi chú: {ghichu}</div>"
                     
                 html_content += "</div>"
                 
