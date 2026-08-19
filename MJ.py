@@ -220,10 +220,12 @@ with tab1:
                 else:
                     with st.spinner("Đang lưu thông tin vào hệ thống..."):
                         conn = st.connection("gsheets", type=GSheetsConnection)
+                        
+                        # Chỉ lấy data từ Response để xử lý ghi đè
                         df_target = conn.read(spreadsheet=SHEET_URL, worksheet="Response")
                         df_target.columns = df_target.columns.str.strip()
                         
-                        # Fix lỗi TypeError: Ép kiểu cột về object (chuỗi) để tránh Pandas hiểu nhầm thành float
+                        # Ép kiểu để không bị lỗi TypeError
                         cols_to_update = ['Checked SDT', 'Checked Địa chỉ', 'Trạng thái xác nhận', 'Lưu ý']
                         for col in cols_to_update:
                             if col not in df_target.columns:
@@ -242,6 +244,15 @@ with tab1:
                                 df_target.at[idx, 'Lưu ý'] = final_note.strip()
                                 
                             df_target = df_target.drop(columns=['SDT_Compare'])
+                            
+                            # BƯỚC QUAN TRỌNG NHẤT: TẨY TRẦN TOÀN BỘ CỘT SĐT TRƯỚC KHI PUSH LÊN
+                            # Áp dụng hàm clean_phone để đắp lại số 0 cho 100% các dòng
+                            if 'SDT' in df_target.columns:
+                                df_target['SDT'] = df_target['SDT'].apply(clean_phone)
+                            if 'Checked SDT' in df_target.columns:
+                                df_target['Checked SDT'] = df_target['Checked SDT'].apply(clean_phone)
+                            
+                            # Update đè lên đúng tab Response
                             conn.update(spreadsheet=SHEET_URL, worksheet="Response", data=df_target)
                             st.cache_data.clear() 
                             st.success("✅ ĐÃ GHI NHẬN THÔNG TIN LÊN HỆ THỐNG! Cảm ơn bạn rất nhiều 💖")
