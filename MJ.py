@@ -218,39 +218,43 @@ with tab1:
         auto_ward = chk_ward if chk_ward else extract_location(original_address, list_ward_options)
 
         if not is_locked:
+            # CARD CẢNH BÁO NỔI BẬT HIỂN THỊ MẶC ĐỊNH BÊN NGOÀI
+            st.markdown("""
+            <div style='border: 2px solid #E74C3C; border-radius: 8px; padding: 15px; background-color: #FDEDEC; margin-bottom: 20px;'>
+                <b style='color: #C0392B; font-size: 15px;'>🚨 LƯU Ý ĐỊNH DẠNG ĐỊA CHỈ HỢP LỆ:</b><br>
+                <ol style='color: #C0392B; margin-top: 5px; margin-bottom: 5px; padding-left: 20px;'>
+                    <li>Chỉ bao gồm Số nhà, Đường, Phường/ Xã, Tỉnh/ Thành phố (Vd: 7A Thoại Ngọc Hầu, Phường Tân Phú, Tp.HCM).</li>
+                    <li>Mọi lưu ý khác bạn điền ở phần Địa chỉ đặc biệt giúp mình nhé (bỏ tick đỏ phía trên sẽ thấy phần này nha).</li>
+                    <li>Mọi người nhớ check kỹ phần Khu vực hành chính nha.</li>
+                </ol>
+                <i style='color: #C0392B;'>Vì để đảm bảo ship hàng không bị thất lạc do sự sáp nhập, mọi người chịu khó giúp mình nha.</i>
+            </div>
+            """, unsafe_allow_html=True)
+
             is_correct = st.checkbox("Thông tin giao hàng bên dưới đã chính xác.", value=True, key=f"chk_correct_{clean_input}")
             st.markdown("<div style='font-size: 13px; font-style: italic; color: #555; margin-top: -10px; margin-bottom: 15px;'>*Trong trường hợp bạn muốn cập nhật, bạn bỏ dấu tick phía đầu nha, và bạn đọc kỹ phần lưu ý về địa chỉ phía dưới giúp mình nha.</div>", unsafe_allow_html=True)
             
             if not is_correct:
-                # CARD CẢNH BÁO NỔI BẬT
-                st.markdown("""
-                <div style='border: 2px solid #E74C3C; border-radius: 8px; padding: 15px; background-color: #FDEDEC; margin-bottom: 20px;'>
-                    <b style='color: #C0392B; font-size: 15px;'>🚨 LƯU Ý ĐỊNH DẠNG ĐỊA CHỈ HỢP LỆ:</b><br>
-                    <ol style='color: #C0392B; margin-top: 5px; margin-bottom: 5px; padding-left: 20px;'>
-                        <li>Chỉ bao gồm Số nhà, Đường, Phường/ Xã, Tỉnh/ Thành phố.</li>
-                        <li>Mọi lưu ý khác bạn điền ở phần <b>Địa chỉ đặc biệt</b> giúp mình nhé.</li>
-                        <li>Mọi người nhớ check kỹ phần Khu vực hành chính nha.</li>
-                    </ol>
-                    <i style='color: #C0392B;'>Vì để đảm bảo ship hàng không bị thất lạc do sự sáp nhập, mọi người chịu khó giúp mình nha.</i>
-                </div>
-                """, unsafe_allow_html=True)
-
+                st.markdown("<div style='color: #E74C3C; font-size: 14px; font-weight: bold;'>⚠️ CHỈ ĐIỀN VÀO Ô NÀO CẦN CẬP NHẬT. Giữ nguyên thì BỎ TRỐNG nhé!</div>", unsafe_allow_html=True)
                 new_phone = st.text_input("SĐT Cập Nhật:", placeholder=f"Hiện tại: {original_phone}")
-                new_address = st.text_area("Địa chỉ Cập Nhật (Số nhà, Đường):", placeholder=f"Hiện tại: {original_address}")
+                new_address = st.text_area("Địa chỉ cập nhật (Số nhà, Đường, Phường/ Xã, Tỉnh/ Thành phố) - Vd: 7A Thoại Ngọc Hầu, Phường Tân Phú, Tp.HCM", placeholder=f"Hiện tại: {original_address}")
                 
                 st.markdown("<div style='font-weight: bold; color: #0B192C; margin-top: 10px;'>Khu vực hành chính sau sáp nhập của nhà bạn:</div>", unsafe_allow_html=True)
+                
+                # Chia 2 cột cho Dropdown
+                col_c1, col_c2 = st.columns(2)
                 
                 # Cục Dropdown Thành phố
                 city_options = ["-- Chọn Thành phố --"] + LIST_CITY
                 default_city_idx = city_options.index(auto_city) if auto_city in city_options else 0
-                selected_city = st.selectbox("Thành phố", options=city_options, index=default_city_idx)
+                selected_city = col_c1.selectbox("Thành phố", options=city_options, index=default_city_idx)
                 
                 # Cục Dropdown Phường xã (Phụ thuộc Thành phố)
                 ward_options = ["-- Chọn Phường/Xã --"]
                 if selected_city != "-- Chọn Thành phố --":
                     ward_options += DICT_CITY_WARD.get(selected_city, [])
                 default_ward_idx = ward_options.index(auto_ward) if auto_ward in ward_options else 0
-                selected_ward = st.selectbox("Phường/Xã", options=ward_options, index=default_ward_idx)
+                selected_ward = col_c2.selectbox("Phường/Xã", options=ward_options, index=default_ward_idx)
                 
                 st.markdown("<div style='font-size: 12.5px; font-style: italic; color: #E74C3C; margin-top: -10px; margin-bottom: 15px;'>*Nếu khu vực hành chính sau sáp nhập chưa đúng, bạn nhớ chọn lại nha.</div>", unsafe_allow_html=True)
                 
@@ -281,6 +285,7 @@ with tab1:
         html_info = f"<div class='info-box'>"
         html_info += f"<b>SĐT:</b> {final_phone}<br>"
         html_info += f"<b>Địa chỉ:</b> {final_address}<br>"
+        html_info += f"<b>KHU VỰC HÀNH CHÍNH SAU SÁP NHẬP:</b><br>"
         html_info += f"<b>Tỉnh/Thành phố:</b> {final_city if final_city else '<span style=\"color:#E74C3C\">Chưa xác định</span>'}<br>"
         html_info += f"<b>Phường/Xã:</b> {final_ward if final_ward else '<span style=\"color:#E74C3C\">Chưa xác định</span>'}"
         if final_special: html_info += f"<br><b>Địa chỉ đặc biệt:</b> {final_special}"
