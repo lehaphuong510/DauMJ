@@ -7,7 +7,7 @@ import re
 from streamlit_gsheets import GSheetsConnection
 
 # ================= 1. CẤU HÌNH TRANG =================
-st.set_page_config(page_title="XÁC NHẬN THÔNG TIN GIAO HÀNG", page_icon="📦", layout="centered")
+st.set_page_config(page_title="FREEBIE MJ FROM ĐẬU", page_icon="📦", layout="centered")
 
 ADMIN_PASSWORD = "1708"
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1IB7wWROgUWjpRVRe_k1b16S3SqKoXvOvZYOemx73phE/edit?usp=sharing"
