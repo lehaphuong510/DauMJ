@@ -300,18 +300,27 @@ with tab1:
         else:
             st.write(luu_y_cu)
 
-        # 4. NÚT XÁC NHẬN (GHI ĐÈ LÊN TAB RESPONSE)
+                # 4. NÚT XÁC NHẬN (GHI ĐÈ LÊN TAB RESPONSE)
         if not is_locked:
             if st.button("🚀 XÁC NHẬN / CẬP NHẬT", type="primary"):
-                # CHẶN 1: Bỏ tick nhưng KHÔNG điền bất cứ cái gì (trống trơn)
-                if not is_correct and new_phone.strip() == "" and new_address.strip() == "" and final_city == "" and final_ward == "" and final_special.strip() == "":
-                    st.warning("⚠️ Bạn đã bỏ tick xác nhận, vui lòng điền thông tin mới cần cập nhật vào các ô phía trên nha!")
+                # --- LOGIC CHẶN SIÊU CHẶT CHẼ ---
+                no_changes = False
+                if not is_correct:
+                    # Nếu 3 ô text không điền gì
+                    if new_phone.strip() == "" and new_address.strip() == "" and new_special.strip() == "":
+                        # VÀ 2 cục dropdown vẫn y xì đúc như auto-fill ban đầu (chưa đổi)
+                        if final_city == (auto_city if auto_city else "") and final_ward == (auto_ward if auto_ward else ""):
+                            no_changes = True
+
+                # CHẶN 1: Bỏ tick nhưng chả thay đổi thông tin gì
+                if not is_correct and no_changes:
+                    st.warning("⚠️ Bạn đã bỏ tick xác nhận, nhưng không nhập thông tin gì mới. Nếu mọi thứ đã đúng, bạn cứ tick lại giùm mình nha!")
                 
-                # CHẶN 2: Bỏ tick, có điền nhưng QUÊN chọn Thành phố hoặc Phường/Xã
+                # CHẶN 2: Bỏ tick, có nhập thông tin nhưng QUÊN chọn Thành phố hoặc Phường/Xã
                 elif not is_correct and (final_city == "" or final_ward == ""):
                     st.warning("⚠️ Bạn vui lòng chọn đầy đủ Thành phố và Phường/Xã nhé!")
                     
-                # NẾU QUA ĐƯỢC HẾT CÁC BƯỚC CHẶN -> LƯU DỮ LIỆU
+                # NẾU VƯỢT QUA HẾT CÁC ẢI CHẶN -> CHO LƯU DỮ LIỆU
                 else:
                     with st.spinner("Đang lưu thông tin vào hệ thống..."):
                         conn = st.connection("gsheets", type=GSheetsConnection)
@@ -350,6 +359,7 @@ with tab1:
                             st.balloons()
                         else:
                             st.error("Không tìm thấy dòng tương ứng trong tab Response để ghi đè. Báo Admin nhé!")
+
 
 # ================= TAB 2: ADMIN =================
 with tab2:
