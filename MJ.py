@@ -83,6 +83,7 @@ def get_image_base64(path):
             return base64.b64encode(img_file.read()).decode()
     return ""
 
+# KIỂM TRA CHÍNH XÁC TÊN FILE HÌNH Ở ĐÂY NHA
 img_title = get_image_base64("Web confirm.jpg")
 
 st.markdown("""
@@ -100,7 +101,7 @@ st.markdown("""
 if img_title:
     st.markdown(f"<div style='text-align: center; margin-bottom: 20px;'><img src='data:image/jpeg;base64,{img_title}' style='width: 100%; max-width: 800px; border-radius: 10px;'></div>", unsafe_allow_html=True)
 else:
-    st.markdown("<h1 style='text-align: center;'>📦 XÁC NHẬN THÔNG TIN GIAO HÀNG</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center;'>📦 FREEBIE MJ FROM ĐẬU</h1>", unsafe_allow_html=True)
 
 col_rf1, col_rf2 = st.columns([1, 3])
 with col_rf1:
@@ -135,12 +136,13 @@ with tab1:
         row_data = user_orders.iloc[0]
         
         ten_kh = str(row_data.get('Tên', 'BẠN')).strip()
-        original_phone = str(row_data.get('SDT', '')).strip()
+        # Áp dụng hàm clean_phone ngay lúc lấy data để triệt tiêu .0
+        original_phone = clean_phone(row_data.get('SDT', ''))
         original_address = str(row_data.get('Địa chỉ', '')).strip()
         ghi_chu_goc = str(row_data.get('Ghi chú', '')).strip()
         mvd = str(row_data.get('Mã vận đơn', '')).replace('nan', '').strip()
         
-        chk_sdt = str(row_data.get('Checked SDT', '')).strip().replace("nan", "")
+        chk_sdt = clean_phone(row_data.get('Checked SDT', ''))
         chk_dc = str(row_data.get('Checked Địa chỉ', '')).strip().replace("nan", "")
         tt_xacnhan = str(row_data.get('Trạng thái xác nhận', '')).strip()
         luu_y_cu = str(row_data.get('Lưu ý', '')).strip().replace("nan", "")
@@ -181,14 +183,13 @@ with tab1:
             st.error("🔒 ĐÃ HẾT THỜI GIAN CẬP NHẬT. Thông tin bên dưới đã được chốt sổ.")
 
         st.markdown("<div class='section-title'>📍 THÔNG TIN GIAO HÀNG</div>", unsafe_allow_html=True)
-        st.info("📍 Phương thức nhận hàng: **Ship về nhà**")
 
         final_phone = original_phone
         final_address = original_address
 
         if not is_locked:
-            is_correct = st.checkbox("Thông tin giao hàng bên dưới đã chính xác.", value=True)
-            # Thêm dòng chú thích nhỏ ở đây
+            # Đã gắn thêm key để checkbox nhớ trạng thái
+            is_correct = st.checkbox("Thông tin giao hàng bên dưới đã chính xác.", value=True, key=f"chk_correct_{clean_input}")
             st.markdown("<div style='font-size: 13px; font-style: italic; color: #555; margin-top: -10px; margin-bottom: 15px;'>*Trong trường hợp bạn muốn cập nhật, bạn bỏ dấu tick phía đầu nha, và nếu địa chỉ của bạn chưa phải là địa chỉ sau sáp nhập, bạn cũng cập nhật lại giúp mình nha.</div>", unsafe_allow_html=True)
             
             if not is_correct:
@@ -221,11 +222,9 @@ with tab1:
                     with st.spinner("Đang lưu thông tin vào hệ thống..."):
                         conn = st.connection("gsheets", type=GSheetsConnection)
                         
-                        # Chỉ lấy data từ Response để xử lý ghi đè
                         df_target = conn.read(spreadsheet=SHEET_URL, worksheet="Response")
                         df_target.columns = df_target.columns.str.strip()
                         
-                        # Ép kiểu để không bị lỗi TypeError
                         cols_to_update = ['Checked SDT', 'Checked Địa chỉ', 'Trạng thái xác nhận', 'Lưu ý']
                         for col in cols_to_update:
                             if col not in df_target.columns:
@@ -245,14 +244,12 @@ with tab1:
                                 
                             df_target = df_target.drop(columns=['SDT_Compare'])
                             
-                            # BƯỚC QUAN TRỌNG NHẤT: TẨY TRẦN TOÀN BỘ CỘT SĐT TRƯỚC KHI PUSH LÊN
-                            # Áp dụng hàm clean_phone để đắp lại số 0 cho 100% các dòng
+                            # Tẩy trần toàn bộ SDT trước khi lưu để khỏi bị GG Sheet làm mất số 0
                             if 'SDT' in df_target.columns:
                                 df_target['SDT'] = df_target['SDT'].apply(clean_phone)
                             if 'Checked SDT' in df_target.columns:
                                 df_target['Checked SDT'] = df_target['Checked SDT'].apply(clean_phone)
                             
-                            # Update đè lên đúng tab Response
                             conn.update(spreadsheet=SHEET_URL, worksheet="Response", data=df_target)
                             st.cache_data.clear() 
                             st.success("✅ ĐÃ GHI NHẬN THÔNG TIN LÊN HỆ THỐNG! Cảm ơn bạn rất nhiều 💖")
@@ -303,7 +300,7 @@ with tab2:
 
         # --- TẠO DATA CHUẨN ĐỂ XUẤT FILE ---
         df_export_base = df_app.copy()
-        df_export_base['Final_Phone'] = df_export_base['Checked SDT'].replace(['', 'nan', 'None'], pd.NA).fillna(df_export_base['SDT'])
+        df_export_base['Final_Phone'] = df_export_base['Checked SDT'].apply(clean_phone).replace('', pd.NA).fillna(df_export_base['SDT'].apply(clean_phone))
         df_export_base['Final_Address'] = df_export_base['Checked Địa chỉ'].replace(['', 'nan', 'None'], pd.NA).fillna(df_export_base['Địa chỉ'])
         
         # --- DOWNLOAD FILE EXCEL (FORM SPX) ---
