@@ -300,7 +300,7 @@ with tab1:
         else:
             st.write(luu_y_cu)
 
-        # 4. NÚT XÁC NHẬN (GHI ĐÈ LÊN TAB RESPONSE)
+                # 4. NÚT XÁC NHẬN (GHI ĐÈ LÊN TAB RESPONSE)
         if not is_locked:
             if st.button("🚀 XÁC NHẬN / CẬP NHẬT", type="primary"):
                 if not is_correct and new_phone.strip() == "" and new_address.strip() == "" and final_city == "" and final_ward == "" and final_special.strip() == "":
@@ -312,6 +312,14 @@ with tab1:
                         conn = st.connection("gsheets", type=GSheetsConnection)
                         df_target = conn.read(spreadsheet=SHEET_URL, worksheet="Response")
                         df_target.columns = df_target.columns.str.strip()
+                        
+                        # --- ĐOẠN CODE BẢO VỆ ÉP KIỂU (CHỐNG LỖI TYPE ERROR) ---
+                        cols_to_update = ['SDT', 'Checked SDT', 'Checked Địa chỉ', 'Checked Thành phố', 'Checked Phường xã', 'Địa chỉ đặc biệt', 'Trạng thái xác nhận', 'Lưu ý']
+                        for col in cols_to_update:
+                            if col not in df_target.columns:
+                                df_target[col] = ""
+                            df_target[col] = df_target[col].astype(object)
+                        # --------------------------------------------------------
                         
                         df_target['SDT_Compare'] = df_target['SDT'].apply(clean_phone).str.lstrip('0')
                         idx_list = df_target[df_target['SDT_Compare'] == clean_input].index
@@ -328,7 +336,7 @@ with tab1:
                                 
                             df_target = df_target.drop(columns=['SDT_Compare'])
                             
-                            # TẨY TRẦN DỮ LIỆU ĐỂ BẢO ĐẢM KHÔNG BỊ MẤT SỐ 0 HAY LỖI TYPE_ERROR
+                            # TẨY TRẦN DỮ LIỆU ĐỂ BẢO ĐẢM KHÔNG BỊ MẤT SỐ 0
                             df_target = clean_df_for_gsheets(df_target)
                             
                             conn.update(spreadsheet=SHEET_URL, worksheet="Response", data=df_target)
