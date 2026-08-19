@@ -10,7 +10,9 @@ from streamlit_gsheets import GSheetsConnection
 st.set_page_config(page_title="FREEBIE MJ FROM ĐẬU", page_icon="📦", layout="centered")
 
 ADMIN_PASSWORD = "1708"
-SHEET_URL = "https://docs.google.com/spreadsheets/d/1IB7wWROgUWjpRVRe_k1b16S3SqKoXvOvZYOemx73phE/edit?usp=sharing"
+SHEET_ID = "1IB7wWROgUWjpRVRe_k1b16S3SqKoXvOvZYOemx73phE"
+SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/edit?usp=sharing"
+
 LOCK_FILE = "lock_form.txt"
 
 def is_form_locked(): return os.path.exists(LOCK_FILE)
@@ -20,19 +22,7 @@ def set_form_lock(locked):
     else:
         if os.path.exists(LOCK_FILE): os.remove(LOCK_FILE)
 
-# Hàm quét tỉnh/phường thông minh
-def extract_location(address, loc_list):
-    if pd.isna(address) or str(address).strip() == "": return ""
-    addr_lower = str(address).lower()
-    
-    sorted_locs = sorted(loc_list, key=len, reverse=True)
-    
-    for loc in sorted_locs:
-        clean_loc = loc.lower().replace("tỉnh ", "").replace("thành phố ", "").replace("phường ", "").replace("xã ", "").replace("đặc khu ", "")
-        if clean_loc in addr_lower:
-            return loc
-    return ""
-
+# ================= 2. CÁC HÀM XỬ LÝ DỮ LIỆU TỪ CODE GỐC =================
 def clean_phone(x):
     s = str(x).replace('.0', '').replace("'", "").strip()
     if s.lower() in ['nan', 'none', '']: return ""
@@ -41,7 +31,41 @@ def clean_phone(x):
         return '0' + s_clean
     return s_clean
 
-# ================= 2. HÀM TẢI DỮ LIỆU & CACHE =================
+# Phục hồi hàm "Tẩy trần dữ liệu" chuẩn xác của code cũ
+def clean_df_for_gsheets(df):
+    cols_to_ensure = ['Checked SDT', 'Checked Địa chỉ', 'Trạng thái xác nhận', 'Lưu ý']
+    for c in cols_to_ensure:
+        if c not in df.columns: df[c] = ""
+        df[c] = df[c].astype(object)
+        
+    def restore_phone_zero(x):
+        s = str(x).replace('.0', '').replace("'", "").strip()
+        if s.lower() in ['nan', 'none', '']: return ""
+        s_clean = s.replace(" ", "").replace(".", "")
+        if s_clean.isdigit() and not s.startswith('0'): 
+            s = '0' + s_clean
+        return s 
+        
+    for col in df.columns:
+        col_upper = col.upper()
+        if 'SDT' in col_upper or 'ĐIỆN THOẠI' in col_upper:
+            df[col] = df[col].apply(restore_phone_zero)
+            
+    return df
+
+# Hàm quét tỉnh/phường thông minh
+def extract_location(address, loc_list):
+    if pd.isna(address) or str(address).strip() == "": return ""
+    addr_lower = str(address).lower()
+    sorted_locs = sorted(loc_list, key=len, reverse=True)
+    
+    for loc in sorted_locs:
+        clean_loc = loc.lower().replace("tỉnh ", "").replace("thành phố ", "").replace("phường ", "").replace("xã ", "").replace("đặc khu ", "")
+        if clean_loc in addr_lower:
+            return loc
+    return ""
+
+# ================= 3. HÀM TẢI DỮ LIỆU & CACHE =================
 @st.cache_data(ttl=60)
 def load_data():
     conn = st.connection("gsheets", type=GSheetsConnection)
@@ -65,8 +89,6 @@ def load_data():
     
     if 'SDT' in df_app.columns:
         df_app['SDT'] = df_app['SDT'].apply(clean_phone)
-    if 'SDT' in df_resp.columns:
-        df_resp['SDT'] = df_resp['SDT'].apply(clean_phone)
         
     return df_app, df_resp, list_city, list_ward
 
@@ -76,14 +98,13 @@ except Exception as e:
     st.error("Đang có lỗi kết nối Google Sheet. Vui lòng thử lại sau!")
     st.stop()
 
-# ================= 3. GIAO DIỆN & CSS =================
+# ================= 4. GIAO DIỆN & CSS =================
 def get_image_base64(path):
     if os.path.exists(path):
         with open(path, "rb") as img_file:
             return base64.b64encode(img_file.read()).decode()
     return ""
 
-# KIỂM TRA CHÍNH XÁC TÊN FILE HÌNH Ở ĐÂY NHA
 img_title = get_image_base64("Web confirm.jpg")
 
 st.markdown("""
@@ -136,7 +157,6 @@ with tab1:
         row_data = user_orders.iloc[0]
         
         ten_kh = str(row_data.get('Tên', 'BẠN')).strip()
-        # Áp dụng hàm clean_phone ngay lúc lấy data để triệt tiêu .0
         original_phone = clean_phone(row_data.get('SDT', ''))
         original_address = str(row_data.get('Địa chỉ', '')).strip()
         ghi_chu_goc = str(row_data.get('Ghi chú', '')).strip()
@@ -148,7 +168,13 @@ with tab1:
         luu_y_cu = str(row_data.get('Lưu ý', '')).strip().replace("nan", "")
 
         is_locked = is_form_locked()
-        has_update = (chk_sdt != "") or (chk_dc != "")
+        
+        # LOGIC XÁC NHẬN CHUẨN XÁC TỪ CODE CŨ
+        has_update = False
+        if (chk_sdt != "") and (chk_sdt != original_phone): 
+            has_update = True
+        if (chk_dc != "") and (chk_dc != original_address): 
+            has_update = True
 
         if tt_xacnhan == "Đã xác nhận":
             if chk_sdt: original_phone = chk_sdt
@@ -188,8 +214,9 @@ with tab1:
         final_address = original_address
 
         if not is_locked:
-            # Đã gắn thêm key để checkbox nhớ trạng thái
+            # Gắn lại KEY cho Checkbox để giữ trạng thái
             is_correct = st.checkbox("Thông tin giao hàng bên dưới đã chính xác.", value=True, key=f"chk_correct_{clean_input}")
+            # Trả lại dòng Text thông báo in nghiêng
             st.markdown("<div style='font-size: 13px; font-style: italic; color: #555; margin-top: -10px; margin-bottom: 15px;'>*Trong trường hợp bạn muốn cập nhật, bạn bỏ dấu tick phía đầu nha, và nếu địa chỉ của bạn chưa phải là địa chỉ sau sáp nhập, bạn cũng cập nhật lại giúp mình nha.</div>", unsafe_allow_html=True)
             
             if not is_correct:
@@ -221,18 +248,10 @@ with tab1:
                 else:
                     with st.spinner("Đang lưu thông tin vào hệ thống..."):
                         conn = st.connection("gsheets", type=GSheetsConnection)
-                        
                         df_target = conn.read(spreadsheet=SHEET_URL, worksheet="Response")
                         df_target.columns = df_target.columns.str.strip()
                         
-                        cols_to_update = ['Checked SDT', 'Checked Địa chỉ', 'Trạng thái xác nhận', 'Lưu ý']
-                        for col in cols_to_update:
-                            if col not in df_target.columns:
-                                df_target[col] = ""
-                            df_target[col] = df_target[col].astype(object)
-                        
                         df_target['SDT_Compare'] = df_target['SDT'].apply(clean_phone).str.lstrip('0')
-                        
                         idx_list = df_target[df_target['SDT_Compare'] == clean_input].index
                         
                         if len(idx_list) > 0:
@@ -244,11 +263,8 @@ with tab1:
                                 
                             df_target = df_target.drop(columns=['SDT_Compare'])
                             
-                            # Tẩy trần toàn bộ SDT trước khi lưu để khỏi bị GG Sheet làm mất số 0
-                            if 'SDT' in df_target.columns:
-                                df_target['SDT'] = df_target['SDT'].apply(clean_phone)
-                            if 'Checked SDT' in df_target.columns:
-                                df_target['Checked SDT'] = df_target['Checked SDT'].apply(clean_phone)
+                            # TẨY TRẦN DỮ LIỆU ĐỂ BẢO ĐẢM KHÔNG BỊ MẤT SỐ 0 HAY LỖI TYPE_ERROR
+                            df_target = clean_df_for_gsheets(df_target)
                             
                             conn.update(spreadsheet=SHEET_URL, worksheet="Response", data=df_target)
                             st.cache_data.clear() 
@@ -278,12 +294,25 @@ with tab2:
         df_confirmed = df_app[df_app['Trạng thái xác nhận'].astype(str).str.strip() == 'Đã xác nhận']
         confirmed_total = len(df_confirmed)
         
+        # Hàm HAS_UPDATE với safe_str siêu việt từ code cũ
         def has_update(row):
-            orig_sdt = str(row.get('SDT', '')).strip()
-            orig_dc = str(row.get('Địa chỉ', '')).strip()
-            chk_sdt = str(row.get('Checked SDT', '')).replace('nan','').strip()
-            chk_dc = str(row.get('Checked Địa chỉ', '')).replace('nan','').strip()
-            if chk_sdt != '' and clean_phone(chk_sdt) != clean_phone(orig_sdt): return True
+            def safe_str(val):
+                if pd.isna(val): return ""
+                s = str(val).strip()
+                if s.lower() in ['nan', 'none', '<na>', 'nat', '']: return ""
+                return s
+                
+            orig_sdt = safe_str(row.get('SDT', '')).replace('.0', '').replace("'", "")
+            if orig_sdt.isdigit() and not orig_sdt.startswith('0'): orig_sdt = '0' + orig_sdt
+            
+            orig_dc = safe_str(row.get('Địa chỉ', ''))
+            
+            chk_sdt = safe_str(row.get('Checked SDT', '')).replace('.0', '').replace("'", "")
+            if chk_sdt.isdigit() and not chk_sdt.startswith('0'): chk_sdt = '0' + chk_sdt
+            
+            chk_dc = safe_str(row.get('Checked Địa chỉ', ''))
+
+            if chk_sdt != '' and chk_sdt != orig_sdt: return True
             if chk_dc != '' and chk_dc != orig_dc: return True
             return False
 
