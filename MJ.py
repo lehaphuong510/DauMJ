@@ -300,13 +300,18 @@ with tab1:
         else:
             st.write(luu_y_cu)
 
-                # 4. NÚT XÁC NHẬN (GHI ĐÈ LÊN TAB RESPONSE)
+        # 4. NÚT XÁC NHẬN (GHI ĐÈ LÊN TAB RESPONSE)
         if not is_locked:
             if st.button("🚀 XÁC NHẬN / CẬP NHẬT", type="primary"):
+                # CHẶN 1: Bỏ tick nhưng KHÔNG điền bất cứ cái gì (trống trơn)
                 if not is_correct and new_phone.strip() == "" and new_address.strip() == "" and final_city == "" and final_ward == "" and final_special.strip() == "":
-                    st.warning("⚠️ Bạn quên chưa điền thông tin cập nhật rồi. Bạn vui lòng tick xác nhận hoặc điền thông tin mới nha.")
+                    st.warning("⚠️ Bạn đã bỏ tick xác nhận, vui lòng điền thông tin mới cần cập nhật vào các ô phía trên nha!")
+                
+                # CHẶN 2: Bỏ tick, có điền nhưng QUÊN chọn Thành phố hoặc Phường/Xã
                 elif not is_correct and (final_city == "" or final_ward == ""):
                     st.warning("⚠️ Bạn vui lòng chọn đầy đủ Thành phố và Phường/Xã nhé!")
+                    
+                # NẾU QUA ĐƯỢC HẾT CÁC BƯỚC CHẶN -> LƯU DỮ LIỆU
                 else:
                     with st.spinner("Đang lưu thông tin vào hệ thống..."):
                         conn = st.connection("gsheets", type=GSheetsConnection)
