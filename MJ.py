@@ -105,7 +105,7 @@ def get_image_base64(path):
             return base64.b64encode(img_file.read()).decode()
     return ""
 
-img_title = get_image_base64("Web confirm.jpg")
+img_title = get_image_base64("Web cover.jpg")
 
 st.markdown("""
     <style>
