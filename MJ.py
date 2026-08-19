@@ -218,7 +218,11 @@ with tab1:
         auto_ward = chk_ward if chk_ward else extract_location(original_address, list_ward_options)
 
         if not is_locked:
-            # CARD CẢNH BÁO NỔI BẬT HIỂN THỊ MẶC ĐỊNH BÊN NGOÀI
+            # Checkbox Đảo lên trên
+            is_correct = st.checkbox("Thông tin giao hàng bên dưới đã chính xác.", value=True, key=f"chk_correct_{clean_input}")
+            st.markdown("<div style='font-size: 13px; font-style: italic; color: #555; margin-top: -10px; margin-bottom: 15px;'>*Trong trường hợp bạn muốn cập nhật, bạn bỏ dấu tick phía đầu nha, và bạn đọc kỹ phần lưu ý về địa chỉ phía dưới giúp mình nha.</div>", unsafe_allow_html=True)
+
+            # CARD CẢNH BÁO NỔI BẬT NẰM DƯỚI TEXT IN NGHIÊNG
             st.markdown("""
             <div style='border: 2px solid #E74C3C; border-radius: 8px; padding: 15px; background-color: #FDEDEC; margin-bottom: 20px;'>
                 <b style='color: #C0392B; font-size: 15px;'>🚨 LƯU Ý ĐỊNH DẠNG ĐỊA CHỈ HỢP LỆ:</b><br>
@@ -230,9 +234,6 @@ with tab1:
                 <i style='color: #C0392B;'>Vì để đảm bảo ship hàng không bị thất lạc do sự sáp nhập, mọi người chịu khó giúp mình nha.</i>
             </div>
             """, unsafe_allow_html=True)
-
-            is_correct = st.checkbox("Thông tin giao hàng bên dưới đã chính xác.", value=True, key=f"chk_correct_{clean_input}")
-            st.markdown("<div style='font-size: 13px; font-style: italic; color: #555; margin-top: -10px; margin-bottom: 15px;'>*Trong trường hợp bạn muốn cập nhật, bạn bỏ dấu tick phía đầu nha, và bạn đọc kỹ phần lưu ý về địa chỉ phía dưới giúp mình nha.</div>", unsafe_allow_html=True)
             
             if not is_correct:
                 st.markdown("<div style='color: #E74C3C; font-size: 14px; font-weight: bold;'>⚠️ CHỈ ĐIỀN VÀO Ô NÀO CẦN CẬP NHẬT. Giữ nguyên thì BỎ TRỐNG nhé!</div>", unsafe_allow_html=True)
