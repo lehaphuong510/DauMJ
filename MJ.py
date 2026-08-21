@@ -300,7 +300,7 @@ with tab1:
         else:
             st.write(luu_y_cu)
 
-                # 4. NÚT XÁC NHẬN (GHI ĐÈ LÊN TAB RESPONSE)
+        # 4. NÚT XÁC NHẬN (GHI ĐÈ LÊN TAB RESPONSE)
         if not is_locked:
             if st.button("🚀 XÁC NHẬN / CẬP NHẬT", type="primary"):
                 # --- LOGIC CHẶN SIÊU CHẶT CHẼ ---
@@ -360,7 +360,6 @@ with tab1:
                         else:
                             st.error("Không tìm thấy dòng tương ứng trong tab Response để ghi đè. Báo Admin nhé!")
 
-
 # ================= TAB 2: ADMIN =================
 with tab2:
     pass_admin = st.text_input("Nhập mật khẩu Admin:", type="password")
@@ -415,8 +414,7 @@ with tab2:
         c4.metric("⏳ Đang chờ", not_confirmed)
         st.divider()
 
-        # --- TẠO DATA CHUẨN ĐỂ XUẤT FILE ---
-        # Logic Fallback hoàn hảo: Trống thì lấy gốc, nếu đã chọn thì lấy thông tin khách chọn
+        # --- TẠO DATA CHUẨN ĐỂ XUẤT FILE & HIỂN THỊ ---
         def get_final_row(row):
             def s_str(val): return str(val).replace('nan','').replace('None','').strip()
             
@@ -433,102 +431,152 @@ with tab2:
             f_spec = s_str(row.get('Địa chỉ đặc biệt'))
             return pd.Series([f_phone, f_add, f_city, f_ward, f_spec])
 
-        df_export_base = df_app.copy()
-        df_export_base[['Final_Phone', 'Final_Address', 'Final_City', 'Final_Ward', 'Final_Special']] = df_export_base.apply(get_final_row, axis=1)
+        df_export_base = df_confirmed.copy()
+        
+        # Thêm cột cờ đánh dấu cập nhật để phân loại danh sách hiển thị
+        if not df_export_base.empty:
+            df_export_base['Is_Updated'] = df_export_base.apply(has_update, axis=1)
+            df_export_base[['Final_Phone', 'Final_Address', 'Final_City', 'Final_Ward', 'Final_Special']] = df_export_base.apply(get_final_row, axis=1)
+        
+        # --- HIỂN THỊ CHI TIẾT DANH SÁCH ---
+        st.markdown("#### 📋 CHI TIẾT DANH SÁCH ĐÃ XÁC NHẬN")
+        col_list1, col_list2 = st.columns(2)
+        
+        with col_list1:
+            with st.expander(f"📝 Danh sách CÓ CẬP NHẬT ({updated_count})"):
+                if not df_export_base.empty:
+                    df_upd = df_export_base[df_export_base['Is_Updated'] == True]
+                    if not df_upd.empty:
+                        for _, r in df_upd.iterrows():
+                            t = str(r.get('Tên', '')).replace('nan','').strip()
+                            p = str(r.get('Final_Phone', '')).replace('nan','').strip()
+                            a = str(r.get('Final_Address', '')).replace('nan','').strip()
+                            w = str(r.get('Final_Ward', '')).replace('nan','').strip()
+                            c = str(r.get('Final_City', '')).replace('nan','').strip()
+                            st.markdown(f"- **{t}** | 📞 {p}<br>🏠 <span style='font-size:13px; color:#555;'>{a}, {w}, {c}</span>", unsafe_allow_html=True)
+                    else:
+                        st.info("Chưa có ai.")
+                else:
+                    st.info("Chưa có ai.")
+                    
+        with col_list2:
+            with st.expander(f"👌 Danh sách CHỈ XÁC NHẬN ({just_confirmed_count})"):
+                if not df_export_base.empty:
+                    df_just = df_export_base[df_export_base['Is_Updated'] == False]
+                    if not df_just.empty:
+                        for _, r in df_just.iterrows():
+                            t = str(r.get('Tên', '')).replace('nan','').strip()
+                            p = str(r.get('Final_Phone', '')).replace('nan','').strip()
+                            a = str(r.get('Final_Address', '')).replace('nan','').strip()
+                            w = str(r.get('Final_Ward', '')).replace('nan','').strip()
+                            c = str(r.get('Final_City', '')).replace('nan','').strip()
+                            st.markdown(f"- **{t}** | 📞 {p}<br>🏠 <span style='font-size:13px; color:#555;'>{a}, {w}, {c}</span>", unsafe_allow_html=True)
+                    else:
+                        st.info("Chưa có ai.")
+                else:
+                    st.info("Chưa có ai.")
+                    
+        st.divider()
         
         # --- DOWNLOAD FILE EXCEL (FORM SPX) ---
         st.markdown("### 📥 TẢI FILE EXCEL - FORM SPX")
         if st.button("Tạo File Excel SPX"):
-            df_spx = pd.DataFrame()
-            df_spx['*Tên người nhận'] = df_export_base['Tên']
-            df_spx['*Số điện thoại'] = df_export_base['Final_Phone'].apply(lambda x: f"'{x}") 
-            df_spx['*Tỉnh/Thành Phố'] = df_export_base['Final_City']
-            df_spx['*Xã/Phường'] = df_export_base['Final_Ward']
-            df_spx['*Địa chỉ chi tiết'] = df_export_base['Final_Address']
-            df_spx['Lưu ý về địa chỉ'] = df_export_base['Final_Special']
-            df_spx['Mã bưu chính'] = ""
-            df_spx['*Tên sản phẩm'] = "Quà từ Đậu"
-            df_spx['Số lượng'] = 1
-            df_spx['Giá tiền'] = 0
-            df_spx['*Tổng cân nặng bưu gửi (KG)'] = 0.5
-            df_spx['Chiều dài (CM)'] = 30
-            df_spx['Chiều rộng (CM)'] = 10
-            df_spx['Chiều cao (CM)'] = 1
-            df_spx['Mã khách hàng'] = ""
-            df_spx['*Giá trị đơn hàng'] = 0
-            df_spx['*Giao hàng một phần (Y/N)'] = "N"
-            df_spx['*Cho phép thử hàng (Y/N)'] = "N"
-            df_spx['*Cho xem hàng, không cho thử (Y/N)'] = "N"
-            df_spx['Thu phí từ chối nhận hàng (Y/N)'] = "N"
-            df_spx['Phí từ chối nhận hàng cần thu'] = ""
-            df_spx['*Thu COD (Y/N)'] = "N"
-            df_spx['Số tiền COD'] = ""
-            df_spx['bưu gửi giá trị cao (Y/N)'] = "N"
-            df_spx['*Hình thức thanh Toán'] = "Người nhận trả"
+            if df_export_base.empty:
+                st.warning("Hiện chưa có ai xác nhận để tải file!")
+            else:
+                df_spx = pd.DataFrame()
+                df_spx['*Tên người nhận'] = df_export_base['Tên']
+                df_spx['*Số điện thoại'] = df_export_base['Final_Phone'].apply(lambda x: f"'{x}") 
+                df_spx['*Tỉnh/Thành Phố'] = df_export_base['Final_City']
+                df_spx['*Xã/Phường'] = df_export_base['Final_Ward']
+                df_spx['*Địa chỉ chi tiết'] = df_export_base['Final_Address']
+                df_spx['Lưu ý về địa chỉ'] = df_export_base['Final_Special']
+                df_spx['Mã bưu chính'] = ""
+                df_spx['*Tên sản phẩm'] = "Quà từ Đậu"
+                df_spx['Số lượng'] = 1
+                df_spx['Giá tiền'] = 0
+                df_spx['*Tổng cân nặng bưu gửi (KG)'] = 0.5
+                df_spx['Chiều dài (CM)'] = 30
+                df_spx['Chiều rộng (CM)'] = 10
+                df_spx['Chiều cao (CM)'] = 1
+                df_spx['Mã khách hàng'] = ""
+                df_spx['*Giá trị đơn hàng'] = 0
+                df_spx['*Giao hàng một phần (Y/N)'] = "N"
+                df_spx['*Cho phép thử hàng (Y/N)'] = "N"
+                df_spx['*Cho xem hàng, không cho thử (Y/N)'] = "N"
+                df_spx['Thu phí từ chối nhận hàng (Y/N)'] = "N"
+                df_spx['Phí từ chối nhận hàng cần thu'] = ""
+                df_spx['*Thu COD (Y/N)'] = "N"
+                df_spx['Số tiền COD'] = ""
+                df_spx['bưu gửi giá trị cao (Y/N)'] = "N"
+                df_spx['*Hình thức thanh Toán'] = "Người nhận trả"
 
-            output = io.BytesIO()
-            with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                df_spx.to_excel(writer, index=False, sheet_name='Form SPX')
-            excel_data = output.getvalue()
-            
-            st.download_button(
-                label="📥 TẢI FILE EXCEL SPX (.xlsx)",
-                data=excel_data,
-                file_name="Form_Tao_Don_SPX.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
+                output = io.BytesIO()
+                with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                    df_spx.to_excel(writer, index=False, sheet_name='Form SPX')
+                excel_data = output.getvalue()
+                
+                st.download_button(
+                    label="📥 TẢI FILE EXCEL SPX (.xlsx)",
+                    data=excel_data,
+                    file_name="Form_Tao_Don_SPX.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
             
         st.divider()
 
         # --- DOWNLOAD LABLE IN ĐƠN ---
         st.markdown("### 🖨️ TẢI FILE LABEL DÁN THÙNG")
         if st.button("Tạo File In Label HTML"):
-            html_content = """
-            <html><head><meta charset="utf-8">
-            <style>
-                @page { size: 100mm 150mm; margin: 0; }
-                body { font-family: Arial, sans-serif; margin: 0; padding: 3mm; background-color: #f4f4f9; }
-                .grid-container { display: flex; flex-direction: column; gap: 3mm; }
-                .label-box { width: 94mm; height: auto; min-height: 40mm; background: #fff; border: 2px dashed #000; padding: 10px; border-radius: 5px; box-sizing: border-box; page-break-inside: avoid; }
-                .title { font-size: 16px; font-weight: bold; color: #000; border-bottom: 2px solid #000; padding-bottom: 4px; margin-bottom: 6px; }
-                .info { font-size: 14px; margin-bottom: 4px; line-height: 1.4; color: #000; }
-                .note { font-size: 13px; font-style: italic; color: #555; margin-top: 6px; border-top: 1px dotted #ccc; padding-top: 4px; }
-            </style></head><body><div class="grid-container">
-            """
-            
-            for index, row in df_export_base.iterrows():
-                ten = str(row.get('Tên', '')).replace('nan', '').strip()
-                sdt = str(row.get('Final_Phone', '')).replace('nan', '').strip()
-                diachi = str(row.get('Final_Address', '')).replace('nan', '').strip()
-                tp = str(row.get('Final_City', '')).replace('nan', '').strip()
-                px = str(row.get('Final_Ward', '')).replace('nan', '').strip()
-                spec = str(row.get('Final_Special', '')).replace('nan', '').strip()
-                mvd = str(row.get('Mã vận đơn', '')).replace('nan', '').strip()
-                ghichu = str(row.get('Ghi chú', '')).replace('nan', '').strip()
-                
-                mvd_text = f"📦 MÃ VĐ: {mvd}" if mvd else "📦 MÃ VĐ: ......................"
-                full_address = f"{diachi}, {px}, {tp}".strip(", ")
-                
-                html_content += f"""
-                <div class="label-box">
-                    <div class="title">{mvd_text}</div>
-                    <div class="info">👤 <b>{ten}</b> <br>📞 {sdt}</div>
-                    <div class="info">🏠 {full_address}</div>
+            if df_export_base.empty:
+                st.warning("Hiện chưa có ai xác nhận để tải Label!")
+            else:
+                html_content = """
+                <html><head><meta charset="utf-8">
+                <style>
+                    @page { size: 100mm 150mm; margin: 0; }
+                    body { font-family: Arial, sans-serif; margin: 0; padding: 3mm; background-color: #f4f4f9; }
+                    .grid-container { display: flex; flex-direction: column; gap: 3mm; }
+                    .label-box { width: 94mm; height: auto; min-height: 40mm; background: #fff; border: 2px dashed #000; padding: 10px; border-radius: 5px; box-sizing: border-box; page-break-inside: avoid; }
+                    .title { font-size: 16px; font-weight: bold; color: #000; border-bottom: 2px solid #000; padding-bottom: 4px; margin-bottom: 6px; }
+                    .info { font-size: 14px; margin-bottom: 4px; line-height: 1.4; color: #000; }
+                    .note { font-size: 13px; font-style: italic; color: #555; margin-top: 6px; border-top: 1px dotted #ccc; padding-top: 4px; }
+                </style></head><body><div class="grid-container">
                 """
-                if spec: html_content += f"<div class='info'>📍 Đặc biệt: <b>{spec}</b></div>"
-                if ghichu: html_content += f"<div class='note'>📝 Ghi chú: {ghichu}</div>"
-                    
-                html_content += "</div>"
                 
-            html_content += "</div></body></html>"
-            
-            st.success("Đã tạo Label thành công!")
-            st.download_button(
-                label="📥 TẢI FILE IN LABLE (.html)", 
-                data=html_content, 
-                file_name="Label_SPX_Nhanh.html", 
-                mime="text/html"
-            )
+                for index, row in df_export_base.iterrows():
+                    ten = str(row.get('Tên', '')).replace('nan', '').strip()
+                    sdt = str(row.get('Final_Phone', '')).replace('nan', '').strip()
+                    diachi = str(row.get('Final_Address', '')).replace('nan', '').strip()
+                    tp = str(row.get('Final_City', '')).replace('nan', '').strip()
+                    px = str(row.get('Final_Ward', '')).replace('nan', '').strip()
+                    spec = str(row.get('Final_Special', '')).replace('nan', '').strip()
+                    mvd = str(row.get('Mã vận đơn', '')).replace('nan', '').strip()
+                    ghichu = str(row.get('Ghi chú', '')).replace('nan', '').strip()
+                    
+                    mvd_text = f"📦 MÃ VĐ: {mvd}" if mvd else "📦 MÃ VĐ: ......................"
+                    full_address = f"{diachi}, {px}, {tp}".strip(", ")
+                    
+                    html_content += f"""
+                    <div class="label-box">
+                        <div class="title">{mvd_text}</div>
+                        <div class="info">👤 <b>{ten}</b> <br>📞 {sdt}</div>
+                        <div class="info">🏠 {full_address}</div>
+                    """
+                    if spec: html_content += f"<div class='info'>📍 Đặc biệt: <b>{spec}</b></div>"
+                    if ghichu: html_content += f"<div class='note'>📝 Ghi chú: {ghichu}</div>"
+                        
+                    html_content += "</div>"
+                    
+                html_content += "</div></body></html>"
+                
+                st.success("Đã tạo Label thành công!")
+                st.download_button(
+                    label="📥 TẢI FILE IN LABLE (.html)", 
+                    data=html_content, 
+                    file_name="Label_SPX_Nhanh.html", 
+                    mime="text/html"
+                )
 
     elif pass_admin != "":
         st.error("Sai mật khẩu!")
