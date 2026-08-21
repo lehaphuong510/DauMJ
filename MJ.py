@@ -316,9 +316,12 @@ with tab1:
                 if not is_correct and no_changes:
                     st.warning("⚠️ Bạn đã bỏ tick xác nhận, nhưng không nhập thông tin gì mới. Nếu mọi thứ đã đúng, bạn cứ tick lại giùm mình nha!")
                 
-                # CHẶN 2: Bỏ tick, có nhập thông tin nhưng QUÊN chọn Thành phố hoặc Phường/Xã
-                elif not is_correct and (final_city == "" or final_ward == ""):
-                    st.warning("⚠️ Bạn vui lòng chọn đầy đủ Thành phố và Phường/Xã nhé!")
+                # CHẶN 2: Ép buộc phải chọn Tỉnh và Phường (Bất kể có bỏ tick hay không)
+                elif final_city == "" or final_ward == "":
+                    if is_correct:
+                        st.warning("⚠️ Thông tin gốc chưa nhận diện được Khu vực hành chính. Bạn vui lòng bỏ tick và chọn đầy đủ Thành phố & Phường/Xã bên dưới nha!")
+                    else:
+                        st.warning("⚠️ Bạn vui lòng chọn đầy đủ Thành phố và Phường/Xã nhé!")
                     
                 # NẾU VƯỢT QUA HẾT CÁC ẢI CHẶN -> CHO LƯU DỮ LIỆU
                 else:
@@ -576,7 +579,17 @@ with tab2:
                 </style></head><body><div class="grid-container">
                 """
                 
-                for index, row in df_export_base.iterrows():
+                # --- LOGIC SẮP XẾP ĐƠN CÓ GHI CHÚ LÊN ĐẦU ---
+                df_label_sort = df_export_base.copy()
+                
+                def check_note(x):
+                    s = str(x).replace('nan', '').replace('None', '').strip()
+                    return 1 if s != '' else 0
+                    
+                df_label_sort['Sort_Note'] = df_label_sort['Ghi chú'].apply(check_note)
+                df_label_sort = df_label_sort.sort_values(by='Sort_Note', ascending=False)
+                
+                for index, row in df_label_sort.iterrows():
                     ten = str(row.get('Tên', '')).replace('nan', '').strip()
                     sdt = str(row.get('Final_Phone', '')).replace('nan', '').strip()
                     diachi = str(row.get('Final_Address', '')).replace('nan', '').strip()
