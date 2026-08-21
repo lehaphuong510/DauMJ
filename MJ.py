@@ -477,6 +477,38 @@ with tab2:
                     st.info("Chưa có ai.")
                     
         st.divider()
+
+        # --- LỜI NHẮN NHỦ TỪ FAN ---
+        st.markdown("### 💌 LỜI NHẮN NHỦ TỪ FAN")
+        
+        if 'Lưu ý' in df_export_base.columns:
+            df_notes = df_export_base[df_export_base['Lưu ý'].astype(str).str.strip().replace(['nan', 'None', ''], pd.NA).notna()]
+            df_notes = df_notes[df_notes['Lưu ý'].astype(str).str.strip() != '']
+            
+            if not df_notes.empty:
+                st.write(f"🥰 Đang có **{len(df_notes)}** lời nhắn siêu dễ thương từ các bạn Fan nè:")
+                
+                cols = st.columns(2)
+                
+                for idx, row in enumerate(df_notes.iterrows()):
+                    row_data = row[1]
+                    note = str(row_data['Lưu ý']).strip()
+                    sdt = str(row_data.get('Final_Phone', '')).replace('.0', '').replace("'", "")
+                    name = str(row_data.get('Tên', '')).replace('nan', '').strip()
+                    if name == "": name = "Fan Giấu Tên"
+                    
+                    card_html = f"<div style='background-color: #FFF9E6; border-left: 5px solid #F4C430; padding: 15px; border-radius: 8px; margin-bottom: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.05);'>"
+                    card_html += f"<div style='font-size: 13px; font-weight: bold; color: #0B192C; margin-bottom: 8px;'>"
+                    card_html += f"👤 {name} <span style='color: #666; font-weight: normal;'>({sdt})</span></div>"
+                    card_html += f"<div style='font-size: 14px; color: #333; font-style: italic; line-height: 1.5;'>\"{note}\"</div></div>"
+                    
+                    cols[idx % 2].markdown(card_html, unsafe_allow_html=True)
+            else:
+                st.info("Hiện tại chưa có bạn nào để lại lời nhắn.")
+        else:
+            st.error("Chưa có cột 'Lưu ý' trong dữ liệu.")
+            
+        st.divider()
         
         # --- DOWNLOAD FILE EXCEL (FORM SPX) ---
         st.markdown("### 📥 TẢI FILE EXCEL - FORM SPX")
