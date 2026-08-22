@@ -160,6 +160,7 @@ with tab1:
         original_address = str(row_data.get('Địa chỉ', '')).strip()
         ghi_chu_goc = str(row_data.get('Ghi chú', '')).strip()
         mvd = str(row_data.get('Mã vận đơn', '')).replace('nan', '').strip()
+        phi_ship = str(row_data.get('Phí ship', '')).replace('nan', '').strip()
         
         chk_sdt = clean_phone(row_data.get('Checked SDT', ''))
         chk_dc = str(row_data.get('Checked Địa chỉ', '')).strip().replace("nan", "")
@@ -192,6 +193,8 @@ with tab1:
         st.markdown("<div class='section-title'>🚚 THÔNG TIN VẬN CHUYỂN</div>", unsafe_allow_html=True)
         html_ship = "<div class='info-box'>"
         html_ship += "<div style='margin-bottom: 8px;'><b>Đơn vị vận chuyển:</b> <span style='color: #0B192C;'>SPX Express</span></div>"
+        if phi_ship:
+            html_ship += f"<div style='margin-bottom: 8px;'><b>Phí ship dự kiến:</b> <span style='color: #E74C3C; font-weight: bold;'>{phi_ship}</span></div>"
         
         if mvd:
             html_ship += f"<div style='margin-bottom: 8px;'><b>Mã vận đơn:</b> <span style='color: #E74C3C; font-weight: bold; font-size: 16px;'>{mvd}</span></div>"
